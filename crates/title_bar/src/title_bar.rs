@@ -15,6 +15,7 @@ use crate::{
     system_window_tabs::SystemWindowTabs,
 };
 
+
 #[cfg(not(target_os = "macos"))]
 use crate::application_menu::{
     ActivateDirection, ActivateMenuLeft, ActivateMenuRight, OpenApplicationMenu,
@@ -47,7 +48,7 @@ use workspace::{ToggleWorktreeSecurity, Workspace, notifications::NotifyResultEx
 use zed_actions::{OpenRecent, OpenRemote};
 
 pub use onboarding_banner::restore_banner;
-
+use run_and_debug_ui::toolbar::RunAndDebugToolbar;
 #[cfg(feature = "stories")]
 pub use stories::*;
 
@@ -136,6 +137,7 @@ pub struct TitleBar {
     _subscriptions: Vec<Subscription>,
     banner: Entity<OnboardingBanner>,
     screen_share_popover_handle: PopoverMenuHandle<ContextMenu>,
+    run_and_debug_toolbar: Entity<RunAndDebugToolbar>,
 }
 
 impl Render for TitleBar {
@@ -202,6 +204,7 @@ impl Render for TitleBar {
                 .gap_1()
                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                 .children(self.render_call_controls(window, cx))
+                .child(self.run_and_debug_toolbar.clone())
                 .children(self.render_connection_status(status, cx))
                 .when(
                     user.is_none() && TitleBarSettings::get_global(cx).show_sign_in,
@@ -315,6 +318,7 @@ impl TitleBar {
         });
 
         let platform_titlebar = cx.new(|cx| PlatformTitleBar::new(id, cx));
+        let run_and_debug_toolbar = cx.new(|cx| RunAndDebugToolbar::new(workspace.weak_handle(), cx));
 
         Self {
             platform_titlebar,
@@ -326,6 +330,7 @@ impl TitleBar {
             _subscriptions: subscriptions,
             banner,
             screen_share_popover_handle: PopoverMenuHandle::default(),
+            run_and_debug_toolbar,
         }
     }
 

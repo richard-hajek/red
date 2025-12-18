@@ -14,6 +14,8 @@ pub mod prettier_store;
 mod project_search;
 pub mod project_settings;
 pub mod search;
+mod run_and_debug_inventory;
+pub mod run_and_debug_store;
 mod task_inventory;
 pub mod task_store;
 pub mod telemetry_snapshot;
@@ -148,6 +150,8 @@ pub use task_inventory::{
     BasicContextProvider, ContextProviderWithTasks, DebugScenarioContext, Inventory, TaskContexts,
     TaskSourceKind,
 };
+pub use run_and_debug_inventory::{RunAndDebugInventory, RunAndDebugSourceKind};
+pub use run_and_debug_store::{RunAndDebugSettingsLocation, RunAndDebugStore};
 
 pub use buffer_store::ProjectTransaction;
 pub use lsp_store::{
@@ -194,6 +198,7 @@ pub struct Project {
     collab_client: Arc<client::Client>,
     join_project_response_message_id: u32,
     task_store: Entity<TaskStore>,
+    configuration_store: Entity<RunAndDebugStore>,
     user_store: Entity<UserStore>,
     fs: Arc<dyn Fs>,
     remote_client: Option<Entity<RemoteClient>>,
@@ -1159,11 +1164,22 @@ impl Project {
                 )
             });
 
+            let configuration_store = cx.new(|cx| {
+                RunAndDebugStore::local(
+                    worktree_store.clone(),
+                    toolchain_store.read(cx).as_language_toolchain_store(),
+                    task_store.downgrade(),
+                    environment.clone(),
+                    cx,
+                )
+            });
+
             let settings_observer = cx.new(|cx| {
                 SettingsObserver::new_local(
                     fs.clone(),
                     worktree_store.clone(),
                     task_store.clone(),
+                    configuration_store.clone(),
                     cx,
                 )
             });
@@ -1229,6 +1245,7 @@ impl Project {
                 languages,
                 collab_client: client,
                 task_store,
+                configuration_store,
                 user_store,
                 settings_observer,
                 fs,
@@ -1343,11 +1360,23 @@ impl Project {
                 )
             });
 
+            let configuration_store = cx.new(|cx| {
+                RunAndDebugStore::remote(
+                    worktree_store.clone(),
+                    toolchain_store.read(cx).as_language_toolchain_store(),
+                    task_store.downgrade(),
+                    remote.read(cx).proto_client(),
+                    REMOTE_SERVER_PROJECT_ID,
+                    cx,
+                )
+            });
+
             let settings_observer = cx.new(|cx| {
                 SettingsObserver::new_remote(
                     fs.clone(),
                     worktree_store.clone(),
                     task_store.clone(),
+                    configuration_store.clone(),
                     Some(remote_proto.clone()),
                     cx,
                 )
@@ -1447,6 +1476,7 @@ impl Project {
                 languages,
                 collab_client: client,
                 task_store,
+                configuration_store,
                 user_store,
                 settings_observer,
                 fs,
@@ -1621,11 +1651,27 @@ impl Project {
             }
         })?;
 
+        let configuration_store = cx.new(|cx| {
+            if run_tasks {
+                RunAndDebugStore::remote(
+                    worktree_store.clone(),
+                    Arc::new(EmptyToolchainStore),
+                    task_store.downgrade(),
+                    client.clone().into(),
+                    remote_id,
+                    cx,
+                )
+            } else {
+                RunAndDebugStore::Noop
+            }
+        })?;
+
         let settings_observer = cx.new(|cx| {
             SettingsObserver::new_remote(
                 fs.clone(),
                 worktree_store.clone(),
                 task_store.clone(),
+                configuration_store.clone(),
                 None,
                 cx,
             )
@@ -1693,6 +1739,7 @@ impl Project {
                 languages,
                 user_store: user_store.clone(),
                 task_store,
+                configuration_store,
                 snippets,
                 fs,
                 remote_client: None,
@@ -2084,6 +2131,11 @@ impl Project {
     #[inline]
     pub fn task_store(&self) -> &Entity<TaskStore> {
         &self.task_store
+    }
+
+    #[inline]
+    pub fn configuration_store(&self) -> Option<&Entity<RunAndDebugStore>> {
+        Some(&self.configuration_store)
     }
 
     #[inline]

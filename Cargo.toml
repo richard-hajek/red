@@ -37,6 +37,8 @@ members = [
     "crates/collab_ui",
     "crates/collections",
     "crates/command_palette",
+    "crates/run_and_debug",
+    "crates/run_and_debug_ui",
     "crates/command_palette_hooks",
     "crates/component",
     "crates/component_preview",
@@ -277,6 +279,8 @@ command_palette = { path = "crates/command_palette" }
 command_palette_hooks = { path = "crates/command_palette_hooks" }
 component = { path = "crates/component" }
 component_preview  = { path = "crates/component_preview" }
+run_and_debug = { path = "crates/run_and_debug" }
+run_and_debug_ui = { path = "crates/run_and_debug_ui" }
 context_server = { path = "crates/context_server" }
 copilot = { path = "crates/copilot" }
 crashes = { path = "crates/crashes" }

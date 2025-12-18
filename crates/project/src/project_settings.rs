@@ -7,7 +7,8 @@ use futures::StreamExt as _;
 use gpui::{AsyncApp, BorrowAppContext, Context, Entity, EventEmitter, Subscription, Task};
 use lsp::LanguageServerName;
 use paths::{
-    EDITORCONFIG_NAME, local_debug_file_relative_path, local_settings_file_relative_path,
+    EDITORCONFIG_NAME, local_configurations_file_relative_path, local_debug_file_relative_path,
+    local_recipes_file_relative_path, local_settings_file_relative_path,
     local_tasks_file_relative_path, local_vscode_launch_file_relative_path,
     local_vscode_tasks_file_relative_path, task_file_name,
 };
@@ -626,12 +627,15 @@ pub struct SettingsObserver {
     worktree_store: Entity<WorktreeStore>,
     project_id: u64,
     task_store: Entity<TaskStore>,
+    configuration_store: Entity<crate::RunAndDebugStore>,
     pending_local_settings:
         HashMap<PathTrust, BTreeMap<(WorktreeId, Arc<RelPath>), Option<String>>>,
     _trusted_worktrees_watcher: Option<Subscription>,
     _user_settings_watcher: Option<Subscription>,
     _global_task_config_watcher: Task<()>,
     _global_debug_config_watcher: Task<()>,
+    _global_configuration_watcher: Task<()>,
+    _global_recipes_watcher: Task<()>,
 }
 
 /// SettingsObserver observers changes to .zed/{settings, task}.json files in local worktrees
@@ -649,6 +653,7 @@ impl SettingsObserver {
         fs: Arc<dyn Fs>,
         worktree_store: Entity<WorktreeStore>,
         task_store: Entity<TaskStore>,
+        configuration_store: Entity<crate::RunAndDebugStore>,
         cx: &mut Context<Self>,
     ) -> Self {
         cx.subscribe(&worktree_store, Self::on_worktree_store_event)
@@ -705,6 +710,7 @@ impl SettingsObserver {
         Self {
             worktree_store,
             task_store,
+            configuration_store: configuration_store.clone(),
             mode: SettingsObserverMode::Local(fs.clone()),
             downstream_client: None,
             _trusted_worktrees_watcher,
@@ -721,6 +727,16 @@ impl SettingsObserver {
                 paths::debug_scenarios_file().clone(),
                 cx,
             ),
+            _global_configuration_watcher: Self::subscribe_to_global_configuration_file_changes(
+                fs.clone(),
+                configuration_store.clone(),
+                cx,
+            ),
+            _global_recipes_watcher: Self::subscribe_to_global_recipes_file_changes(
+                fs.clone(),
+                configuration_store,
+                cx,
+            ),
         }
     }
 
@@ -728,6 +744,7 @@ impl SettingsObserver {
         fs: Arc<dyn Fs>,
         worktree_store: Entity<WorktreeStore>,
         task_store: Entity<TaskStore>,
+        configuration_store: Entity<crate::RunAndDebugStore>,
         upstream_client: Option<AnyProtoClient>,
         cx: &mut Context<Self>,
     ) -> Self {
@@ -758,6 +775,7 @@ impl SettingsObserver {
         Self {
             worktree_store,
             task_store,
+            configuration_store: configuration_store.clone(),
             mode: SettingsObserverMode::Remote,
             downstream_client: None,
             project_id: REMOTE_SERVER_PROJECT_ID,
@@ -772,6 +790,16 @@ impl SettingsObserver {
             _global_debug_config_watcher: Self::subscribe_to_global_debug_scenarios_changes(
                 fs.clone(),
                 paths::debug_scenarios_file().clone(),
+                cx,
+            ),
+            _global_configuration_watcher: Self::subscribe_to_global_configuration_file_changes(
+                fs.clone(),
+                configuration_store.clone(),
+                cx,
+            ),
+            _global_recipes_watcher: Self::subscribe_to_global_recipes_file_changes(
+                fs.clone(),
+                configuration_store,
                 cx,
             ),
         }
@@ -962,6 +990,30 @@ impl SettingsObserver {
                     .unwrap()
                     .into();
                 (settings_dir, LocalSettingsKind::Debug)
+            } else if path.ends_with(local_configurations_file_relative_path()) {
+                let settings_dir = path
+                    .ancestors()
+                    .nth(
+                        local_configurations_file_relative_path()
+                            .components()
+                            .count()
+                            .saturating_sub(1),
+                    )
+                    .unwrap()
+                    .into();
+                (settings_dir, LocalSettingsKind::Configurations)
+            } else if path.ends_with(local_recipes_file_relative_path()) {
+                let settings_dir = path
+                    .ancestors()
+                    .nth(
+                        local_recipes_file_relative_path()
+                            .components()
+                            .count()
+                            .saturating_sub(1),
+                    )
+                    .unwrap()
+                    .into();
+                (settings_dir, LocalSettingsKind::Recipes)
             } else if path.ends_with(RelPath::unix(EDITORCONFIG_NAME).unwrap()) {
                 let Some(settings_dir) = path.parent().map(Arc::from) else {
                     continue;
@@ -1147,6 +1199,65 @@ impl SettingsObserver {
                         }
                     }
                 }
+                LocalSettingsKind::Configurations => {
+                    log::info!("Detected configuration file change in worktree {worktree_id:?}, directory: {directory:?}");
+                    let result = self.configuration_store.update(cx, |configuration_store, cx| {
+                        configuration_store.update_run_and_debug_store(
+                            crate::run_and_debug_store::RunAndDebugSettingsLocation::Worktree(SettingsLocation {
+                                worktree_id,
+                                path: directory.as_ref(),
+                            }),
+                            file_content.as_deref(),
+                            cx,
+                        )
+                    });
+
+                    match result {
+                        Err(InvalidSettingsError::InvalidConfigurationFile(message)) => {
+                            log::error!(
+                                "Failed to set local configurations in {directory:?}: {message:?}"
+                            );
+                        }
+                        Err(e) => {
+                            log::error!("Failed to set local configurations: {e}");
+                        }
+                        Ok(()) => {
+                            log::info!(
+                                "Successfully loaded {} configurations from {directory:?}/configurations.json",
+                                file_content.as_ref().map_or(0, |c| c.lines().count())
+                            );
+                        }
+                    }
+                }
+                LocalSettingsKind::Recipes => {
+                    log::info!("Detected recipes file change in worktree {worktree_id:?}, directory: {directory:?}");
+                    let result = self.configuration_store.update(cx, |configuration_store, cx| {
+                        configuration_store.update_recipes(
+                            crate::run_and_debug_store::RunAndDebugSettingsLocation::Worktree(SettingsLocation {
+                                worktree_id,
+                                path: directory.as_ref(),
+                            }),
+                            file_content.as_deref(),
+                            cx,
+                        )
+                    });
+
+                    match result {
+                        Err(InvalidSettingsError::InvalidRecipeFile(message)) => {
+                            log::error!(
+                                "Failed to set local recipes in {directory:?}: {message:?}"
+                            );
+                        }
+                        Err(e) => {
+                            log::error!("Failed to set local recipes: {e}");
+                        }
+                        Ok(()) => {
+                            log::info!(
+                                "Successfully loaded recipes from {directory:?}/recipes.json"
+                            );
+                        }
+                    }
+                }
             };
 
             if applied {
@@ -1275,6 +1386,90 @@ impl SettingsObserver {
             }
         })
     }
+
+    fn subscribe_to_global_configuration_file_changes(
+        fs: Arc<dyn Fs>,
+        configuration_store: Entity<crate::RunAndDebugStore>,
+        cx: &mut Context<Self>,
+    ) -> Task<()> {
+        let configurations_file = paths::config_dir().join("configurations.json");
+        log::info!("Watching global configuration file: {:?}", configurations_file);
+        
+        let mut configurations_file_rx =
+            watch_config_file(cx.background_executor(), fs, configurations_file.clone());
+        let configurations_content = cx.background_executor().block(configurations_file_rx.next());
+        
+        cx.spawn(async move |_settings_observer, cx| {
+            if let Some(configurations_content) = configurations_content {
+                log::info!("Initial load of global configurations file ({} bytes)", configurations_content.len());
+                let _ = configuration_store.update(cx, |store, cx| {
+                    store
+                        .update_run_and_debug_store(
+                            crate::run_and_debug_store::RunAndDebugSettingsLocation::Global(&configurations_file),
+                            Some(&configurations_content),
+                            cx,
+                        )
+                        .log_err();
+                });
+            } else {
+                log::info!("No global configurations file found at startup");
+            }
+            
+            while let Some(configurations_content) = configurations_file_rx.next().await {
+                log::info!("Global configurations file changed ({} bytes)", configurations_content.len());
+                let _ = configuration_store.update(cx, |store, cx| {
+                    store.update_run_and_debug_store(
+                        crate::run_and_debug_store::RunAndDebugSettingsLocation::Global(&configurations_file),
+                        Some(&configurations_content),
+                        cx,
+                    ).log_err()
+                });
+            }
+            log::warn!("Global configuration file watcher ended");
+        })
+    }
+
+    fn subscribe_to_global_recipes_file_changes(
+        fs: Arc<dyn Fs>,
+        configuration_store: Entity<crate::RunAndDebugStore>,
+        cx: &mut Context<Self>,
+    ) -> Task<()> {
+        let recipes_file = paths::config_dir().join("recipes.json");
+        log::info!("Watching global recipes file: {:?}", recipes_file);
+        
+        let mut recipes_file_rx =
+            watch_config_file(cx.background_executor(), fs, recipes_file.clone());
+        let recipes_content = cx.background_executor().block(recipes_file_rx.next());
+        
+        cx.spawn(async move |_settings_observer, cx| {
+            if let Some(recipes_content) = recipes_content {
+                log::info!("Initial load of global recipes file ({} bytes)", recipes_content.len());
+                let _ = configuration_store.update(cx, |store, cx| {
+                    store
+                        .update_recipes(
+                            crate::run_and_debug_store::RunAndDebugSettingsLocation::Global(&recipes_file),
+                            Some(&recipes_content),
+                            cx,
+                        )
+                        .log_err();
+                });
+            } else {
+                log::info!("No global recipes file found at startup");
+            }
+            
+            while let Some(recipes_content) = recipes_file_rx.next().await {
+                log::info!("Global recipes file changed ({} bytes)", recipes_content.len());
+                let _ = configuration_store.update(cx, |store, cx| {
+                    store.update_recipes(
+                        crate::run_and_debug_store::RunAndDebugSettingsLocation::Global(&recipes_file),
+                        Some(&recipes_content),
+                        cx,
+                    ).log_err()
+                });
+            }
+            log::warn!("Global recipes file watcher ended");
+        })
+    }
 }
 
 fn apply_local_settings(
@@ -1323,6 +1518,9 @@ pub fn local_settings_kind_to_proto(kind: LocalSettingsKind) -> proto::LocalSett
         LocalSettingsKind::Tasks => proto::LocalSettingsKind::Tasks,
         LocalSettingsKind::Editorconfig => proto::LocalSettingsKind::Editorconfig,
         LocalSettingsKind::Debug => proto::LocalSettingsKind::Debug,
+        // TODO Configurations are not yet supported over proto/SSH
+        LocalSettingsKind::Configurations => proto::LocalSettingsKind::Settings,
+        LocalSettingsKind::Recipes => proto::LocalSettingsKind::Settings,
     }
 }
 

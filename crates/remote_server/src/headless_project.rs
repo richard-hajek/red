@@ -12,7 +12,7 @@ use language::{Buffer, BufferEvent, LanguageRegistry, proto::serialize_operation
 use node_runtime::NodeRuntime;
 use project::{
     LspStore, LspStoreEvent, ManifestTree, PrettierStore, ProjectEnvironment, ProjectPath,
-    ToolchainStore, WorktreeId,
+    RunAndDebugStore, ToolchainStore, WorktreeId,
     agent_server_store::AgentServerStore,
     buffer_store::{BufferStore, BufferStoreEvent},
     debugger::{breakpoint_store::BreakpointStore, dap_store::DapStore},
@@ -182,11 +182,24 @@ impl HeadlessProject {
             task_store.shared(REMOTE_SERVER_PROJECT_ID, session.clone(), cx);
             task_store
         });
+        
+        let configuration_store = cx.new(|cx| {
+            RunAndDebugStore::remote(
+                worktree_store.clone(),
+                toolchain_store.read(cx).as_language_toolchain_store(),
+                task_store.downgrade(),
+                session.clone(),
+                REMOTE_SERVER_PROJECT_ID,
+                cx,
+            )
+        });
+        
         let settings_observer = cx.new(|cx| {
             let mut observer = SettingsObserver::new_local(
                 fs.clone(),
                 worktree_store.clone(),
                 task_store.clone(),
+                configuration_store.clone(),
                 cx,
             );
             observer.shared(REMOTE_SERVER_PROJECT_ID, session.clone(), cx);

@@ -453,6 +453,30 @@ pub fn task_file_name() -> &'static str {
     "tasks.json"
 }
 
+pub fn configuration_file_name() -> &'static str {
+    "configurations.json"
+}
+
+pub fn recipe_file_name() -> &'static str {
+    "recipes.json"
+}
+
+/// Returns the relative path to a `configurations.json` file within a project.
+/// .zed/configurations.json
+pub fn local_configurations_file_relative_path() -> &'static RelPath {
+    static CACHED: LazyLock<&'static RelPath> =
+        LazyLock::new(|| RelPath::unix(".zed/configurations.json").unwrap());
+    *CACHED
+}
+
+/// Returns the relative path to a `recipes.json` file within a project.
+/// .zed/recipes.json
+pub fn local_recipes_file_relative_path() -> &'static RelPath {
+    static CACHED: LazyLock<&'static RelPath> =
+        LazyLock::new(|| RelPath::unix(".zed/recipes.json").unwrap());
+    *CACHED
+}
+
 /// Returns the relative path to a `debug.json` file within a project.
 /// .zed/debug.json
 pub fn local_debug_file_relative_path() -> &'static RelPath {

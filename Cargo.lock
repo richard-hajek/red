@@ -12543,6 +12543,7 @@ dependencies = [
  "release_channel",
  "remote",
  "rpc",
+ "run_and_debug",
  "schemars",
  "semver",
  "serde",
@@ -13932,6 +13933,58 @@ dependencies = [
  "util",
  "workspace",
  "zed_actions",
+]
+
+[[package]]
+name = "run_and_debug"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "collections",
+ "futures 0.3.31",
+ "gpui",
+ "hex",
+ "log",
+ "parking_lot",
+ "pretty_assertions",
+ "proto",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_json_lenient",
+ "sha2",
+ "shellexpand 2.1.2",
+ "task",
+ "util",
+]
+
+[[package]]
+name = "run_and_debug_ui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "collections",
+ "editor",
+ "futures 0.3.31",
+ "fuzzy",
+ "gpui",
+ "language",
+ "log",
+ "picker",
+ "project",
+ "run_and_debug",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_json_lenient",
+ "settings",
+ "task",
+ "terminal_view",
+ "theme",
+ "ui",
+ "util",
+ "uuid",
+ "workspace",
 ]
 
 [[package]]
@@ -16889,6 +16942,7 @@ dependencies = [
  "project",
  "remote",
  "rpc",
+ "run_and_debug_ui",
  "schemars",
  "serde",
  "settings",
@@ -20755,6 +20809,8 @@ dependencies = [
  "repl",
  "reqwest_client",
  "rope",
+ "run_and_debug",
+ "run_and_debug_ui",
  "search",
  "semver",
  "serde",

@@ -1,0 +1,38 @@
+[package]
+name = "run_and_debug_ui"
+version = "0.1.0"
+edition.workspace = true
+publish.workspace = true
+license = "GPL-3.0-or-later"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/run_and_debug_ui.rs"
+doctest = false
+
+[dependencies]
+run_and_debug.workspace = true
+anyhow.workspace = true
+collections.workspace = true
+editor.workspace = true
+fuzzy.workspace = true
+futures.workspace = true
+gpui.workspace = true
+language.workspace = true
+log.workspace = true
+picker.workspace = true
+project.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_json_lenient.workspace = true
+settings.workspace = true
+task.workspace = true
+terminal_view.workspace = true
+theme.workspace = true
+ui.workspace = true
+util.workspace = true
+uuid.workspace = true
+workspace.workspace = true

@@ -1,3 +1,14 @@
+# Red
+
+This is Richard's fork of Zed, with some additional features which are not compatibile with upstream.
+
+Features:
+- Run & Debug configurations
+   - Replaces tasks and debug configurations into a unified interface, adds UI elements for it
+
+
+---
+
 # Zed
 
 [![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
